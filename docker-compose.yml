@@ -1,0 +1,128 @@
+version: '2.1'
+services:
+    localstack:
+        image: 'localstack/localstack:latest'
+        container_name: '787-aws-localstack'
+        restart: always        
+        ports:
+            - '4572:4572'
+            - '8888:8080'
+        environment:
+            - SERVICES=s3
+            - DOCKER_HOST=unix:///var/run/docker.sock
+            - DATA_DIR=/tmp/localstack/data/ #persist s3 data
+        volumes:
+            - '/tmp/localstack/:/tmp/localstack/'
+            - '/var/run/docker.sock:/var/run/docker.sock'
+        # command: bash -c 'curl -X PUT http://localhost:4572/cmpetl'   # Create a test bucket
+
+    redshift:
+        image: 'postgres:9.3' # Using 9.3 instead of 8.0.2 for convinience purposes
+        container_name: '787-dw-redshift'
+        restart: always
+        environment:
+            - POSTGRES_USER=etl
+            - POSTGRES_PASSWORD=etl
+            - POSTGRES_DB=cmpbi
+            - PGDATA=/var/lib/postgresql/data/pgdata/
+        volumes:
+            - redshift-data:/var/lib/postgresql/data/pgdata/
+        command: -p 5439
+        ports:
+            - '5439:5439'
+
+    redis:
+        image: 'redis:3.2.7'
+        container_name: '787-airflow-redis'
+        command: redis-server --requirepass redispass
+
+    postgres:
+        image: 'postgres:latest'
+        container_name: '787-airflow-postgres'
+        restart: always
+        environment:
+            - POSTGRES_USER=airflow
+            - POSTGRES_PASSWORD=airflow
+            - POSTGRES_DB=airflow
+            - PGDATA=/var/lib/postgresql/data/pgdata/
+        volumes:
+            - postgres-data:/var/lib/postgresql/data/pgdata/       
+        ports:
+            - '5432:5432'
+
+    webserver:
+        image: 'puckel/docker-airflow:1.10.1'
+        container_name: '787-airflow-webserver'
+        restart: always
+        depends_on:
+            - postgres #Actual DB underlying airflow
+        volumes:
+            - ./dags/:/usr/local/airflow/dags/
+            - ./plugins/:/usr/local/airflow/plugins/
+            - ./requirements.txt:/requirements.txt     
+        environment:
+            - LOAD_EX=n
+            - EXECUTOR=Celery
+            - FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=   
+            - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql://airflow:airflow@postgres:5432/airflow #Needed so Airflow uses Postgres instead of SQLite by default
+        ports:
+            - '8080:8080'
+        command: webserver #bash -c "pip install -r /requirements.txt && airflow webserver"
+        healthcheck:
+            test: ["CMD-SHELL", "[ -f /usr/local/airflow/airflow-webserver.pid ]"]
+            interval: 30s
+            timeout: 30s
+            retries: 3
+
+    flower:
+        image: puckel/docker-airflow:1.10.1
+        container_name: 787-airflow-flower
+        restart: always
+        depends_on:
+            - redis
+        environment:
+            - EXECUTOR=Celery
+            - REDIS_PASSWORD=redispass
+        ports:
+            - "5555:5555"
+        command: flower
+
+    scheduler:
+        image: puckel/docker-airflow:1.10.1
+        container_name: 787-airflow-scheduler
+        restart: always
+        depends_on:
+            - webserver
+        volumes:
+            - ./dags/:/usr/local/airflow/dags/
+            - ./plugins/:/usr/local/airflow/plugins/
+            - ./requirements.txt:/requirements.txt
+        environment:
+            - LOAD_EX=n
+            - FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+            - EXECUTOR=Celery
+            - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql://airflow:airflow@postgres:5432/airflow #Needed so Airflow uses Postgres instead of SQLite by default      
+            - REDIS_PASSWORD=redispass       
+        command: scheduler
+
+    worker:
+        image: puckel/docker-airflow:1.10.1
+        container_name: 787-airflow-worker
+        restart: always
+        depends_on:
+            - scheduler
+        volumes:
+            - ./dags/:/usr/local/airflow/dags/
+            - ./plugins/:/usr/local/airflow/plugins/
+            - ./requirements.txt:/requirements.txt
+        environment:
+            - FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+            - EXECUTOR=Celery
+            - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql://airflow:airflow@postgres:5432/airflow #Needed so Airflow uses Postgres instead of SQLite by default          
+            - REDIS_PASSWORD=redispass
+          
+        command: worker -c 1
+
+volumes:
+    postgres-data: {}
+    redshift-data: {}
