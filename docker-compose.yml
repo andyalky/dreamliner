@@ -14,7 +14,6 @@ services:
         volumes:
             - '/tmp/localstack/:/tmp/localstack/'
             - '/var/run/docker.sock:/var/run/docker.sock'
-        # command: bash -c 'curl -X PUT http://localhost:4572/cmpetl'   # Create a test bucket
 
     redshift:
         image: 'postgres:9.3' # Using 9.3 instead of 8.0.2 for convinience purposes
@@ -55,7 +54,7 @@ services:
         container_name: '787-airflow-webserver'
         restart: always
         depends_on:
-            - postgres #Actual DB underlying airflow
+            - postgres
         volumes:
             - ./dags/:/usr/local/airflow/dags/
             - ./plugins/:/usr/local/airflow/plugins/
@@ -64,10 +63,10 @@ services:
             - LOAD_EX=n
             - EXECUTOR=Celery
             - FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=   
-            - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql://airflow:airflow@postgres:5432/airflow #Needed so Airflow uses Postgres instead of SQLite by default
+            - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql://airflow:airflow@postgres:5432/airflow
         ports:
             - '8080:8080'
-        command: webserver #bash -c "pip install -r /requirements.txt && airflow webserver"
+        command: webserver
         healthcheck:
             test: ["CMD-SHELL", "[ -f /usr/local/airflow/airflow-webserver.pid ]"]
             interval: 30s
@@ -101,7 +100,7 @@ services:
             - LOAD_EX=n
             - FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
             - EXECUTOR=Celery
-            - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql://airflow:airflow@postgres:5432/airflow #Needed so Airflow uses Postgres instead of SQLite by default      
+            - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql://airflow:airflow@postgres:5432/airflow     
             - REDIS_PASSWORD=redispass       
         command: scheduler
 
@@ -118,7 +117,7 @@ services:
         environment:
             - FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
             - EXECUTOR=Celery
-            - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql://airflow:airflow@postgres:5432/airflow #Needed so Airflow uses Postgres instead of SQLite by default          
+            - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql://airflow:airflow@postgres:5432/airflow        
             - REDIS_PASSWORD=redispass
           
         command: worker -c 1
